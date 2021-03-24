@@ -3,10 +3,11 @@ use uptown_funk::{Executor, HostFunctions};
 use crate::api::channel::ChannelReceiver;
 use crate::module::LunaticModule;
 
-use crate::api::{channel, networking, process, wasi};
+use crate::api::{channel, heap_profiler::HeapProfilerState, networking, process, wasi};
 pub struct DefaultApi {
     context_receiver: Option<ChannelReceiver>,
     module: LunaticModule,
+    profiler: HeapProfilerState,
 }
 
 impl DefaultApi {
@@ -14,6 +15,7 @@ impl DefaultApi {
         Self {
             context_receiver,
             module,
+            profiler: HeapProfilerState::new(),
         }
     }
 }
@@ -29,11 +31,13 @@ impl HostFunctions for DefaultApi {
         let channel_state = channel::api::ChannelState::new(self.context_receiver);
         let process_state = process::api::ProcessState::new(self.module, channel_state.clone());
         let networking_state = networking::TcpState::new(channel_state.clone());
+        let profiler_state = HeapProfilerState::new();
         let wasi_state = wasi::api::WasiState::new();
 
         channel_state.add_to_linker(executor.clone(), linker);
         process_state.add_to_linker(executor.clone(), linker);
         networking_state.add_to_linker(executor.clone(), linker);
+        profiler_state.add_to_linker(executor.clone(), linker);
         wasi_state.add_to_linker(executor, linker);
     }
 
@@ -50,11 +54,13 @@ impl HostFunctions for DefaultApi {
         let channel_state = channel::api::ChannelState::new(self.context_receiver);
         let process_state = process::api::ProcessState::new(self.module, channel_state.clone());
         let networking_state = networking::TcpState::new(channel_state.clone());
+        let profiler_state = HeapProfilerState::new();
         let wasi_state = wasi::api::WasiState::new();
 
         channel_state.add_to_wasmer_linker(executor.clone(), linker, store);
         process_state.add_to_wasmer_linker(executor.clone(), linker, store);
         networking_state.add_to_wasmer_linker(executor.clone(), linker, store);
+        profiler_state.add_to_wasmer_linker(executor.clone(), linker, store);
         wasi_state.add_to_wasmer_linker(executor, linker, store);
     }
 }

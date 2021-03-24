@@ -11,6 +11,7 @@
 use anyhow::Error;
 use walrus::Module;
 
+mod heap_profiler;
 mod reduction_counting;
 mod shared_memory;
 mod stdlib;
@@ -19,11 +20,13 @@ mod stdlib;
 /// * Add reduction counters and yielding to functions and ~hot loops~.
 /// * Add low level functions required by the Lunatic stdlib.
 /// * Transforming defined memories into imported (shared) ones.
+/// * Add heap profiling support.
 pub fn patch(module_buffer: &[u8]) -> Result<((u32, Option<u32>), Vec<u8>), Error> {
     let mut module = Module::from_buffer(&module_buffer)?;
 
     reduction_counting::patch(&mut module);
     stdlib::patch(&mut module)?;
+    heap_profiler::patch(&mut module);
     let memory = shared_memory::patch(&mut module);
 
     Ok((memory, module.emit_wasm()))
