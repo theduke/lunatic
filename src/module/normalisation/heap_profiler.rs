@@ -2,12 +2,13 @@ use walrus::*;
 
 /// FIXME: add docs
 pub fn patch(module: &mut Module) {
+    let namespace = "heap_profiler";
     let void_type = module.types.add(&[], &[]);
     // add malloc import
-    let (malloc_counter_id, _) = module.add_import_func("env", "malloc_counter", void_type);
+    let (malloc_counter_id, _) = module.add_import_func(namespace, "malloc_counter", void_type);
 
     // add free import
-    let (free_counter_id, _) = module.add_import_func("env", "free_counter", void_type);
+    let (free_counter_id, _) = module.add_import_func(namespace, "free_counter", void_type);
 
     // FIXME: don't panic if malloc is not found
     // add extra line to guest malloc

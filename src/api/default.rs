@@ -7,7 +7,6 @@ use crate::api::{channel, heap_profiler::HeapProfilerState, networking, process,
 pub struct DefaultApi {
     context_receiver: Option<ChannelReceiver>,
     module: LunaticModule,
-    profiler: HeapProfilerState,
 }
 
 impl DefaultApi {
@@ -15,7 +14,6 @@ impl DefaultApi {
         Self {
             context_receiver,
             module,
-            profiler: HeapProfilerState::new(),
         }
     }
 }
