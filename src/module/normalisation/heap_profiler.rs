@@ -58,7 +58,7 @@ pub fn patch(module: &mut Module) -> Result<()> {
     free_function
         .builder_mut()
         .func_body()
-        .local_get(free_args)
-        .call(free_profiler);
+        .local_get_at(0, free_args)
+        .call_at(1, free_profiler);
     Ok(())
 }
