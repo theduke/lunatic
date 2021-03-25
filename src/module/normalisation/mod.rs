@@ -26,7 +26,7 @@ pub fn patch(module_buffer: &[u8]) -> Result<((u32, Option<u32>), Vec<u8>), Erro
 
     reduction_counting::patch(&mut module);
     stdlib::patch(&mut module)?;
-    heap_profiler::patch(&mut module);
+    heap_profiler::patch(&mut module)?;
     let memory = shared_memory::patch(&mut module);
 
     Ok((memory, module.emit_wasm()))

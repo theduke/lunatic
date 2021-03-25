@@ -1,7 +1,8 @@
 use walrus::*;
 
 /// FIXME: add docs
-pub fn patch(module: &mut Module) {
+/// FIXME: enable this patch only with runtime flag
+pub fn patch(module: &mut Module) -> Result<()> {
     let namespace = "heap_profiler";
 
     // add malloc import
@@ -24,9 +25,9 @@ pub fn patch(module: &mut Module) {
     // local_peak iserts the same value that is on top of the stack
     let local_peak = double_stack.finish(vec![val], &mut module.funcs);
 
-    // FIXME: don't panic if malloc is not found
-    // add extra line to guest malloc
-    let malloc_id = module.funcs.by_name("malloc").unwrap();
+    let malloc_id = module.funcs.by_name("malloc").ok_or(anyhow::Error::msg(
+        "heap_profiler: 'malloc' was not found in wasm",
+    ))?;
     let malloc_function = module
         .funcs
         .iter_local_mut()
@@ -42,9 +43,10 @@ pub fn patch(module: &mut Module) {
         .local_get(malloc_args)
         .call(malloc_profiler);
 
-    // FIXME: don't panic if free is not found
-    // add extra line to guest free
-    let free_id = module.funcs.by_name("free").unwrap();
+    let free_id = module.funcs.by_name("free").ok_or(anyhow::Error::msg(
+        "heap_profiler: 'free' was not found in wasm",
+    ))?;
+
     let free_function = module
         .funcs
         .iter_local_mut()
@@ -58,4 +60,5 @@ pub fn patch(module: &mut Module) {
         .func_body()
         .local_get(free_args)
         .call(free_profiler);
+    Ok(())
 }
