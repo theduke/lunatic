@@ -25,13 +25,12 @@ impl HeapProfilerState {
 #[host_functions(namespace = "heap_profiler")]
 impl HeapProfilerState {
     // TODO: check if calloc/realloc are implemented through malloc/free
-    fn malloc_counter(&mut self, ptr: i32, size: i32) -> i32 {
+    fn malloc_profiler(&mut self, ptr: i32, size: i32) {
         self.malloc_counter += 1;
         debug!("{} malloc({}) -> {}", self.malloc_counter, size, ptr);
-        ptr
     }
 
-    fn free_counter(&mut self, ptr: i32) {
+    fn free_profiler(&mut self, ptr: i32) {
         self.free_counter += 1;
         debug!("{}. free({})", self.free_counter, ptr);
     }
