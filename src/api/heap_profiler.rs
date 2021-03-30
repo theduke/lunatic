@@ -38,7 +38,7 @@ impl HeapProfilerState {
 #[host_functions(namespace = "heap_profiler")]
 impl HeapProfilerState {
     // TODO: check if calloc/realloc are implemented through malloc/free
-    fn malloc_profiler(&mut self, ptr: Ptr, size: Size) {
+    fn malloc_profiler(&mut self, size: Size, ptr: Ptr) {
         debug!("{} malloc({}) -> {}", self.malloc_counter, size, ptr);
         self.malloc_counter += 1;
         self.memory.insert(ptr, size);
