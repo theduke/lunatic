@@ -5,6 +5,7 @@ use walrus::*;
 pub fn patch(module: &mut Module) -> Result<()> {
     add_profiler_to(module, "malloc")?;
     add_profiler_to(module, "calloc")?;
+    add_profiler_to(module, "realloc")?;
     add_profiler_to(module, "free")?;
 
     Ok(())
@@ -37,6 +38,10 @@ fn add_profiler_to(module: &mut Module, name: &str) -> Result<()> {
         &format!("{}_profiler", name),
         profiler_type,
     );
+    // we asume args are I32 type
+    let local_vars: Vec<LocalId> = (0..args_len)
+        .map(|_| module.locals.add(ValType::I32))
+        .collect();
 
     let target_function = module
         .funcs
@@ -45,11 +50,6 @@ fn add_profiler_to(module: &mut Module, name: &str) -> Result<()> {
         .next()
         .unwrap()
         .1;
-
-    // we asume args are I32 type
-    let local_vars: Vec<LocalId> = std::iter::repeat(module.locals.add(ValType::I32))
-        .take(args_len)
-        .collect();
 
     // save function args to local var
     local_vars
