@@ -13,6 +13,7 @@ type Size = u32;
 // of invoking host functions will be too big.
 pub struct HeapProfilerState {
     malloc_counter: u32,
+    calloc_counter: u32,
     free_counter: u32,
     memory: HashMap<Ptr, Size>,
     live_heap_size: u64,
@@ -26,6 +27,7 @@ impl HeapProfilerState {
     pub fn new() -> Self {
         Self {
             malloc_counter: 0,
+            calloc_counter: 0,
             free_counter: 0,
             memory: HashMap::new(),
             live_heap_size: 0,
@@ -52,13 +54,33 @@ impl HeapProfilerState {
         );
     }
 
+    fn calloc_profiler(&mut self, len: Size, elem_size: Size, ptr: Ptr) {
+        debug!(
+            "{} calloc({},{}) -> {}",
+            self.calloc_counter, len, elem_size, ptr
+        );
+        let size = len * elem_size;
+        self.calloc_counter += 1;
+        self.memory.insert(ptr, size);
+        self.total_allocated += size as u64;
+        self.live_heap_size += size as u64;
+        self.heap_history
+            .push((self.live_heap_size, SystemTime::now()));
+        debug!(
+            "live_heap={} allocated={}",
+            self.live_heap_size, self.total_allocated
+        );
+    }
+
     fn free_profiler(&mut self, ptr: Ptr) {
         debug!("{}. free({})", self.free_counter, ptr);
         self.free_counter += 1;
-        let size = self.memory.remove(&ptr).unwrap_or(0);
-        self.live_heap_size -= size as u64;
-        self.heap_history
-            .push((self.live_heap_size, SystemTime::now()));
+        if ptr != 0 {
+            let size = self.memory.remove(&ptr).unwrap_or(0);
+            self.live_heap_size -= size as u64;
+            self.heap_history
+                .push((self.live_heap_size, SystemTime::now()));
+        }
         debug!(
             "live_heap={} allocated={}",
             self.live_heap_size, self.total_allocated
