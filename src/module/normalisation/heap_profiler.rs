@@ -4,6 +4,7 @@ use walrus::*;
 /// FIXME: enable this patch only with runtime flag
 pub fn patch(module: &mut Module) -> Result<()> {
     add_profiler_to(module, "malloc")?;
+    add_profiler_to(module, "calloc")?;
     add_profiler_to(module, "free")?;
 
     Ok(())
