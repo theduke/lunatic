@@ -1,5 +1,7 @@
 use std::collections::HashMap;
-use std::time::SystemTime;
+use std::fs::File;
+use std::io::Write;
+use std::time::{Duration, SystemTime};
 use uptown_funk::{host_functions, StateMarker};
 
 use log::debug;
@@ -15,19 +17,46 @@ pub struct HeapProfilerState {
     memory: HashMap<Ptr, Size>,
     live_heap_size: u64,
     total_allocated: u64,
-    heap_history: Vec<(u64, SystemTime)>,
+    started: SystemTime,
+    heap_history: Vec<(u64, Duration)>,
+    output_file: File,
 }
 
 impl StateMarker for HeapProfilerState {}
 
 impl HeapProfilerState {
     pub fn new() -> Self {
-        Self {
+        let mut s = Self {
             memory: HashMap::new(),
             live_heap_size: 0,
             total_allocated: 0,
-            heap_history: vec![(0, SystemTime::now())],
-        }
+            started: SystemTime::now(),
+            heap_history: vec![(0, Duration::new(0, 0))],
+            output_file: File::create("profile.dat").unwrap(),
+        };
+        writeln!(&mut s.output_file, "#heap\t\ttime").unwrap();
+        s
+    }
+
+    pub fn write_dat(&self, fd: &mut File) -> std::io::Result<()> {
+        let mut graph = Vec::new();
+        writeln!(&mut graph, "#heap\t\ttime")?;
+        self.heap_history.iter().for_each(|(heap, duration)| {
+            writeln!(&mut graph, "{}\t\t{}", heap, duration.as_micros()).unwrap();
+        });
+        fd.write_all(&graph)
+    }
+
+    fn write_last_entry(&mut self) {
+        let last = self.heap_history.last().unwrap();
+        // TODO: trap if write failed
+        writeln!(
+            &mut self.output_file,
+            "{}\t\t{}",
+            last.0,
+            last.1.as_micros()
+        )
+        .unwrap();
     }
 }
 
@@ -38,8 +67,10 @@ impl HeapProfilerState {
         self.memory.insert(ptr, size);
         self.total_allocated += size as u64;
         self.live_heap_size += size as u64;
+        // TODO: trap if elapsed failed
         self.heap_history
-            .push((self.live_heap_size, SystemTime::now()));
+            .push((self.live_heap_size, self.started.elapsed().unwrap()));
+        self.write_last_entry();
         debug!(
             "heap_profiler: live_heap={} allocated={}",
             self.live_heap_size, self.total_allocated
@@ -52,8 +83,10 @@ impl HeapProfilerState {
         self.memory.insert(ptr, size);
         self.total_allocated += size as u64;
         self.live_heap_size += size as u64;
+        // TODO: trap if elapsed failed
         self.heap_history
-            .push((self.live_heap_size, SystemTime::now()));
+            .push((self.live_heap_size, self.started.elapsed().unwrap()));
+        self.write_last_entry();
         debug!(
             "heap_profiler: live_heap={} allocated={}",
             self.live_heap_size, self.total_allocated
@@ -71,8 +104,10 @@ impl HeapProfilerState {
         let size_delta = size - removed_size;
         self.total_allocated += size_delta as u64;
         self.live_heap_size += size_delta as u64;
+        // TODO: trap if elapsed failed
         self.heap_history
-            .push((self.live_heap_size, SystemTime::now()));
+            .push((self.live_heap_size, self.started.elapsed().unwrap()));
+        self.write_last_entry();
         debug!(
             "heap_profiler: live_heap={} allocated={}",
             self.live_heap_size, self.total_allocated
@@ -85,8 +120,10 @@ impl HeapProfilerState {
             // TODO: log error/trap if unwrap fails
             let size = self.memory.remove(&ptr).unwrap();
             self.live_heap_size -= size as u64;
+            // TODO: trap if elapsed failed
             self.heap_history
-                .push((self.live_heap_size, SystemTime::now()));
+                .push((self.live_heap_size, self.started.elapsed().unwrap()));
+            self.write_last_entry();
         }
         debug!(
             "heap_profiler: live_heap={} allocated={}",
