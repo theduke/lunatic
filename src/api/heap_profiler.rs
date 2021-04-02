@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::fs::File;
 use std::io::Write;
 use std::time::{Duration, SystemTime};
@@ -8,6 +8,7 @@ use log::debug;
 
 type Ptr = u32;
 type Size = u32;
+const HISTORY_CAPACITY: usize = 100000;
 
 // TODO: currently profiler is implemented on the host
 // and there is associated state with it. Alternatively
@@ -18,45 +19,45 @@ pub struct HeapProfilerState {
     live_heap_size: u64,
     total_allocated: u64,
     started: SystemTime,
-    heap_history: Vec<(u64, Duration)>,
-    output_file: File,
+    heap_history: VecDeque<(u64, Duration)>,
 }
 
 impl StateMarker for HeapProfilerState {}
 
 impl HeapProfilerState {
     pub fn new() -> Self {
-        let mut s = Self {
+        let mut history = VecDeque::with_capacity(HISTORY_CAPACITY);
+        history.push_back((0, Duration::new(0, 0)));
+        Self {
             memory: HashMap::new(),
             live_heap_size: 0,
             total_allocated: 0,
             started: SystemTime::now(),
-            heap_history: vec![(0, Duration::new(0, 0))],
-            output_file: File::create("profile.dat").unwrap(),
-        };
-        writeln!(&mut s.output_file, "#heap\t\ttime").unwrap();
-        s
+            heap_history: history,
+        }
     }
 
     pub fn write_dat(&self, fd: &mut File) -> std::io::Result<()> {
         let mut graph = Vec::new();
-        writeln!(&mut graph, "#heap\t\ttime")?;
+        writeln!(&mut graph, "#time/sec heap/byte")?;
         self.heap_history.iter().for_each(|(heap, duration)| {
-            writeln!(&mut graph, "{}\t\t{}", heap, duration.as_micros()).unwrap();
+            writeln!(&mut graph, "{} {}", duration.as_secs_f64(), heap).unwrap();
         });
         fd.write_all(&graph)
     }
 
-    fn write_last_entry(&mut self) {
-        let last = self.heap_history.last().unwrap();
-        // TODO: trap if write failed
-        writeln!(
-            &mut self.output_file,
-            "{}\t\t{}",
-            last.0,
-            last.1.as_micros()
-        )
-        .unwrap();
+    fn history_push(&mut self) {
+        // TODO: trap if elapsed failed
+        if self.heap_history.len() == HISTORY_CAPACITY {
+            // if HISTRY_CAPACITY > 0 this should be safe
+            self.heap_history.pop_front().unwrap();
+        }
+        self.heap_history
+            .push_back((self.live_heap_size, self.started.elapsed().unwrap()));
+        debug!(
+            "heap_profiler: live_heap={} allocated={}",
+            self.live_heap_size, self.total_allocated
+        );
     }
 }
 
@@ -67,14 +68,7 @@ impl HeapProfilerState {
         self.memory.insert(ptr, size);
         self.total_allocated += size as u64;
         self.live_heap_size += size as u64;
-        // TODO: trap if elapsed failed
-        self.heap_history
-            .push((self.live_heap_size, self.started.elapsed().unwrap()));
-        self.write_last_entry();
-        debug!(
-            "heap_profiler: live_heap={} allocated={}",
-            self.live_heap_size, self.total_allocated
-        );
+        self.history_push();
     }
 
     fn calloc_profiler(&mut self, len: Size, elem_size: Size, ptr: Ptr) {
@@ -83,14 +77,7 @@ impl HeapProfilerState {
         self.memory.insert(ptr, size);
         self.total_allocated += size as u64;
         self.live_heap_size += size as u64;
-        // TODO: trap if elapsed failed
-        self.heap_history
-            .push((self.live_heap_size, self.started.elapsed().unwrap()));
-        self.write_last_entry();
-        debug!(
-            "heap_profiler: live_heap={} allocated={}",
-            self.live_heap_size, self.total_allocated
-        );
+        self.history_push();
     }
 
     fn realloc_profiler(&mut self, old_ptr: Ptr, size: Size, new_ptr: Ptr) {
@@ -104,14 +91,7 @@ impl HeapProfilerState {
         let size_delta = size - removed_size;
         self.total_allocated += size_delta as u64;
         self.live_heap_size += size_delta as u64;
-        // TODO: trap if elapsed failed
-        self.heap_history
-            .push((self.live_heap_size, self.started.elapsed().unwrap()));
-        self.write_last_entry();
-        debug!(
-            "heap_profiler: live_heap={} allocated={}",
-            self.live_heap_size, self.total_allocated
-        );
+        self.history_push();
     }
 
     fn free_profiler(&mut self, ptr: Ptr) {
@@ -120,14 +100,7 @@ impl HeapProfilerState {
             // TODO: log error/trap if unwrap fails
             let size = self.memory.remove(&ptr).unwrap();
             self.live_heap_size -= size as u64;
-            // TODO: trap if elapsed failed
-            self.heap_history
-                .push((self.live_heap_size, self.started.elapsed().unwrap()));
-            self.write_last_entry();
+            self.history_push();
         }
-        debug!(
-            "heap_profiler: live_heap={} allocated={}",
-            self.live_heap_size, self.total_allocated
-        );
     }
 }
