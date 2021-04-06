@@ -212,6 +212,7 @@ impl Process {
         module: LunaticModule,
         function: FunctionLookup,
         memory: MemoryChoice,
+        is_profile: bool,
     ) -> Result<(), Error<()>> {
         let api = DefaultApi::new(context_receiver, module.clone());
         let ret = Process::create_with_api(module, function, memory, api).await;
@@ -225,13 +226,17 @@ impl Process {
                 }
             },
         };
-        let mut profile_out = std::fs::File::create("heap.dat")?;
-        let profile = Rc::try_unwrap(ret)
-            .map_err(|_| {
-                anyhow::Error::msg("api_process_create: Heap profiler referenced multiple times")
-            })?
-            .into_inner();
-        profile.write_dat(&mut profile_out)?;
+        if is_profile {
+            let mut profile_out = std::fs::File::create("heap.dat")?;
+            let profile = Rc::try_unwrap(ret)
+                .map_err(|_| {
+                    anyhow::Error::msg(
+                        "api_process_create: Heap profiler referenced multiple times",
+                    )
+                })?
+                .into_inner();
+            profile.write_dat(&mut profile_out)?;
+        }
 
         Ok(())
     }

@@ -65,6 +65,8 @@ impl ProcessState {
             self.module.clone(),
             FunctionLookup::TableIndex(index),
             MemoryChoice::New(None),
+            // TODO: merge multiple process heap profiles into single one
+            false,
         );
         Process::spawn(future)
     }

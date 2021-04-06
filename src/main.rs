@@ -18,6 +18,9 @@ use wasmtime_runtime::traphandlers::setup_unix_sigaltstack;
 #[derive(Clap)]
 #[clap(version = crate_version!())]
 struct Opts {
+    /// Save heap profile to heap.dat
+    #[clap(short, long)]
+    profile: bool,
     /// .wasm file
     input: String,
     /// All other arguments are forwarded to the .wasm file
@@ -27,10 +30,11 @@ struct Opts {
 
 pub fn run() -> Result<()> {
     let opts: Opts = Opts::parse();
+    let is_profile = opts.profile;
 
     let wasm = fs::read(opts.input).expect("Can't open .wasm file");
 
-    let module = module::LunaticModule::new(&wasm)?;
+    let module = module::LunaticModule::new(&wasm, is_profile)?;
 
     // Set up async runtime
     let cpus = thread::available_concurrency().unwrap();
@@ -50,6 +54,7 @@ pub fn run() -> Result<()> {
                     module,
                     FunctionLookup::Name("_start"),
                     MemoryChoice::New(None),
+                    is_profile,
                 )
                 .await;
                 drop(signal);
