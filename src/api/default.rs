@@ -1,3 +1,4 @@
+use std::{cell::RefCell, rc::Rc};
 use uptown_funk::{Executor, HostFunctions};
 
 use crate::api::channel::ChannelReceiver;
@@ -19,10 +20,10 @@ impl DefaultApi {
 }
 
 impl HostFunctions for DefaultApi {
-    type Return = ();
+    type Return = Rc<RefCell<HeapProfilerState>>;
 
     #[cfg(feature = "vm-wasmtime")]
-    fn add_to_linker<E>(self, executor: E, linker: &mut wasmtime::Linker)
+    fn add_to_linker<E>(self, executor: E, linker: &mut wasmtime::Linker) -> Self::Return
     where
         E: Executor + Clone + 'static,
     {
@@ -35,8 +36,8 @@ impl HostFunctions for DefaultApi {
         channel_state.add_to_linker(executor.clone(), linker);
         process_state.add_to_linker(executor.clone(), linker);
         networking_state.add_to_linker(executor.clone(), linker);
-        profiler_state.add_to_linker(executor.clone(), linker);
-        wasi_state.add_to_linker(executor, linker);
+        wasi_state.add_to_linker(executor.clone(), linker);
+        profiler_state.add_to_linker(executor, linker)
     }
 
     #[cfg(feature = "vm-wasmer")]
@@ -45,7 +46,7 @@ impl HostFunctions for DefaultApi {
         executor: E,
         linker: &mut uptown_funk::wasmer::WasmerLinker,
         store: &wasmer::Store,
-    ) -> ()
+    ) -> Self::Return
     where
         E: Executor + Clone + 'static,
     {
@@ -58,7 +59,7 @@ impl HostFunctions for DefaultApi {
         channel_state.add_to_wasmer_linker(executor.clone(), linker, store);
         process_state.add_to_wasmer_linker(executor.clone(), linker, store);
         networking_state.add_to_wasmer_linker(executor.clone(), linker, store);
-        profiler_state.add_to_wasmer_linker(executor.clone(), linker, store);
-        wasi_state.add_to_wasmer_linker(executor, linker, store);
+        wasi_state.add_to_wasmer_linker(executor.clone(), linker, store);
+        profiler_state.add_to_wasmer_linker(executor, linker, store)
     }
 }

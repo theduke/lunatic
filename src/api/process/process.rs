@@ -5,6 +5,7 @@ use async_wormhole::{
 };
 use lazy_static::lazy_static;
 use smol::{Executor as TaskExecutor, Task};
+use std::rc::Rc;
 use uptown_funk::{memory::Memory, Executor, FromWasm, HostFunctions, ToWasm};
 
 use crate::module::LunaticModule;
@@ -213,7 +214,26 @@ impl Process {
         memory: MemoryChoice,
     ) -> Result<(), Error<()>> {
         let api = DefaultApi::new(context_receiver, module.clone());
-        Process::create_with_api(module, function, memory, api).await
+        let ret = Process::create_with_api(module, function, memory, api).await;
+        let ret = match ret {
+            Ok(r) => r,
+            Err(Error { error, value }) => match value {
+                Some(r) => r,
+                None => {
+                    dbg!(&error);
+                    return Err(From::from(error));
+                }
+            },
+        };
+        let mut profile_out = std::fs::File::create("heap.dat")?;
+        let profile = Rc::try_unwrap(ret)
+            .map_err(|_| {
+                anyhow::Error::msg("api_process_create: Heap profiler referenced multiple times")
+            })?
+            .into_inner();
+        profile.write_dat(&mut profile_out)?;
+
+        Ok(())
     }
 
     /// Spawns a new process on the `EXECUTOR`
