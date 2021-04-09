@@ -5,6 +5,7 @@ use std::time::{Duration, SystemTime};
 use uptown_funk::{host_functions, StateMarker};
 
 use log::debug;
+use log::error;
 
 type Ptr = u32;
 type Size = u32;
@@ -97,10 +98,13 @@ impl HeapProfilerState {
     fn free_profiler(&mut self, ptr: Ptr) {
         debug!("heap_profiler: free({})", ptr);
         if ptr != 0 {
-            // TODO: log error/trap if unwrap fails
-            let size = self.memory.remove(&ptr).unwrap();
-            self.live_heap_size -= size as u64;
-            self.history_push();
+            match self.memory.remove(&ptr) {
+                Some(size) => {
+                    self.live_heap_size -= size as u64;
+                    self.history_push();
+                }
+                None => error!("heap_profiler: can't free, pointer {} doesn't exist", ptr),
+            };
         }
     }
 }
