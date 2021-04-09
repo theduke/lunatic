@@ -9,6 +9,8 @@
 //! are encountered.
 
 use anyhow::Error;
+use std::fs::File;
+use std::io::Write;
 use walrus::Module;
 
 mod heap_profiler;
@@ -24,6 +26,7 @@ mod stdlib;
 pub fn patch(
     module_buffer: &[u8],
     is_profile: bool,
+    is_normalisation_out: bool,
 ) -> Result<((u32, Option<u32>), Vec<u8>), Error> {
     let mut module = Module::from_buffer(&module_buffer)?;
 
@@ -33,6 +36,12 @@ pub fn patch(
         heap_profiler::patch(&mut module)?;
     }
     let memory = shared_memory::patch(&mut module);
+    let wasm = module.emit_wasm();
 
-    Ok((memory, module.emit_wasm()))
+    if is_normalisation_out {
+        let mut normalisation_out = File::create("normalisation.wasm")?;
+        normalisation_out.write_all(&wasm)?;
+    }
+
+    Ok((memory, wasm))
 }

@@ -17,9 +17,9 @@ pub struct LunaticModule {
 }
 
 impl LunaticModule {
-    pub fn new(wasm: &[u8], is_profile: bool) -> Result<Self> {
+    pub fn new(wasm: &[u8], is_profile: bool, is_normalisation_out: bool) -> Result<Self> {
         // Transfrom WASM file into a format compatible with Lunatic.
-        let ((min_memory, max_memory), wasm) = patch(&wasm, is_profile)?;
+        let ((min_memory, max_memory), wasm) = patch(&wasm, is_profile, is_normalisation_out)?;
 
         let engine = engine();
         let module = Module::new(&engine, wasm)?;
