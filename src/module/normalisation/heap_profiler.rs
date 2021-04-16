@@ -1,12 +1,13 @@
 use log::debug;
+use std::collections::HashMap;
 use walrus::*;
 
 /// FIXME: add docs
 /// FIXME: enable this patch only with runtime flag
 pub fn patch(module: &mut Module) -> Result<()> {
     add_profiler_to(module, "malloc")?;
-    //    add_profiler_to(module, "calloc")?;
-    //    add_profiler_to(module, "realloc")?;
+    add_profiler_to(module, "calloc")?;
+    add_profiler_to(module, "realloc")?;
     add_profiler_to(module, "free")?;
     Ok(())
 }
@@ -44,6 +45,7 @@ fn add_profiler_to(module: &mut Module, name: &str) -> Result<()> {
         fn_local_function,
         fn_local_function.block(fn_local_function.entry_block()),
         &mut fn_instr_seq,
+        &mut HashMap::new(),
     );
     let fn_copy_id = fn_builder.finish(fn_local_function.args.clone(), &mut module.funcs);
 
@@ -57,6 +59,7 @@ fn add_profiler_to(module: &mut Module, name: &str) -> Result<()> {
     // create new local params for wrapper function, old params are copied (see clone above) to new
     // function
     let local_vars: Vec<LocalId> = params.iter().map(|t| locals.add(*t)).collect();
+    let rets: Vec<LocalId> = results.iter().map(|t| locals.add(*t)).collect();
     let mut instr_seq = module
         .funcs
         .get_mut(fn_id)
@@ -76,37 +79,77 @@ fn add_profiler_to(module: &mut Module, name: &str) -> Result<()> {
     // call new copied function from wrapper function
     instr_seq.call(fn_copy_id);
 
+    // save returned values from the above function
+    rets.iter().for_each(|r| {
+        instr_seq.local_set(*r);
+    });
+
+    // prepare args to call profiler function
+    local_vars.iter().for_each(|l| {
+        instr_seq.local_get(*l);
+    });
+    rets.iter().for_each(|r| {
+        instr_seq.local_get(*r);
+    });
+
+    // call profiler function
+    instr_seq.call(profiler_id);
+
+    // return saved values from original function
+    rets.iter().for_each(|r| {
+        instr_seq.local_get(*r);
+    });
+
     // modify wrapper function args
     module.funcs.get_mut(fn_id).kind.unwrap_local_mut().args = local_vars;
     Ok(())
 }
 
-fn clone_rec(fn_loc: &LocalFunction, instrs: &ir::InstrSeq, instrs_clone: &mut InstrSeqBuilder) {
+fn clone_rec(
+    fn_loc: &LocalFunction,
+    instrs: &ir::InstrSeq,
+    instrs_clone: &mut InstrSeqBuilder,
+    jmp_ids: &mut HashMap<ir::InstrSeqId, ir::InstrSeqId>,
+) {
+    jmp_ids.insert(instrs.id(), instrs_clone.id());
     instrs.instrs.iter().for_each(|(i, _)| match i {
         ir::Instr::Block(block) => {
             let block_instrs = fn_loc.block(block.seq);
             instrs_clone.block(block_instrs.ty, |block_clone| {
-                clone_rec(fn_loc, block_instrs, block_clone);
+                clone_rec(fn_loc, block_instrs, block_clone, jmp_ids);
             });
         }
         ir::Instr::IfElse(if_else) => {
             let consequent_instrs = fn_loc.block(if_else.consequent);
+            let jmp_ids_clone = &mut jmp_ids.clone();
             instrs_clone.if_else(
                 consequent_instrs.ty,
                 |consequent_clone| {
-                    clone_rec(fn_loc, consequent_instrs, consequent_clone);
+                    clone_rec(fn_loc, consequent_instrs, consequent_clone, jmp_ids);
                 },
                 |alternative_clone| {
-                    clone_rec(fn_loc, fn_loc.block(if_else.alternative), alternative_clone);
+                    clone_rec(
+                        fn_loc,
+                        fn_loc.block(if_else.alternative),
+                        alternative_clone,
+                        jmp_ids_clone,
+                    );
                 },
             );
         }
         ir::Instr::Loop(loop_) => {
             let loop_instrs = fn_loc.block(loop_.seq);
             instrs_clone.block(loop_instrs.ty, |loop_clone| {
-                clone_rec(fn_loc, loop_instrs, loop_clone);
+                clone_rec(fn_loc, loop_instrs, loop_clone, jmp_ids);
             });
         }
+        ir::Instr::Br(br) => {
+            instrs_clone.br(jmp_ids[&br.block]);
+        }
+        ir::Instr::BrIf(br_if) => {
+            instrs_clone.br_if(jmp_ids[&br_if.block]);
+        }
+        // TODO: check BrTable
         _ => {
             instrs_clone.instr(i.clone());
         }
