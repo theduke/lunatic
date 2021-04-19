@@ -13,6 +13,7 @@ pub fn patch(module: &mut Module) -> Result<()> {
 }
 
 fn add_profiler_to(module: &mut Module, name: &str) -> Result<()> {
+    // find local function in module
     let fn_id = module
         .funcs
         .by_name(name)
@@ -23,7 +24,9 @@ fn add_profiler_to(module: &mut Module, name: &str) -> Result<()> {
     let types = module.types.params_results(module.funcs.get(fn_id).ty());
     let (params, results) = (types.0.to_vec(), types.1.to_vec());
 
-    // profilers don't return anything
+    // Import profiler. Profilers don't return anything. Profilers last argument
+    // is result from the original function. For example, local function "malloc(i32) -> u32"
+    // will import profiler of type "malloc(i32, u32)".
     let profiler_type = module
         .types
         .add(&[params.clone(), results.clone()].concat(), &[]);
@@ -35,25 +38,8 @@ fn add_profiler_to(module: &mut Module, name: &str) -> Result<()> {
         )
         .0;
 
-    let mut fn_builder = FunctionBuilder::new(&mut module.types, &params, &results);
-    let fn_local_function = module.funcs.get(fn_id).kind.unwrap_local();
-    fn_builder.name(format!("{}_wrap", name));
-    let mut fn_instr_seq = fn_builder.func_body();
-
-    // copy instructions from fn_id to new function
-    clone_rec(
-        fn_local_function,
-        fn_local_function.block(fn_local_function.entry_block()),
-        &mut fn_instr_seq,
-        &mut HashMap::new(),
-    );
-    let fn_copy_id = fn_builder.finish(fn_local_function.args.clone(), &mut module.funcs);
-
-    // number of instructions in original/wrapper and copied function should be the same
-    assert_eq!(
-        module.funcs.get(fn_id).kind.unwrap_local().size(),
-        module.funcs.get(fn_copy_id).kind.unwrap_local().size()
-    );
+    // create a clone of a function
+    let fn_copy_id = clone_function(module, fn_id, Some(format!("{}_wrap", name)));
 
     let locals = &mut module.locals;
     // create new local params for wrapper function, old params are copied (see clone above) to new
@@ -105,6 +91,34 @@ fn add_profiler_to(module: &mut Module, name: &str) -> Result<()> {
     Ok(())
 }
 
+fn clone_function(module: &mut Module, fn_id: FunctionId, name: Option<String>) -> FunctionId {
+    let types = module.types.params_results(module.funcs.get(fn_id).ty());
+    let (params, results) = (types.0.to_vec(), types.1.to_vec());
+
+    let mut fn_builder = FunctionBuilder::new(&mut module.types, &params, &results);
+    let fn_local_function = module.funcs.get(fn_id).kind.unwrap_local();
+    if let Some(name) = name {
+        fn_builder.name(name);
+    }
+    let mut fn_instr_seq = fn_builder.func_body();
+
+    // copy instructions from fn_id to new function
+    clone_rec(
+        fn_local_function,
+        fn_local_function.block(fn_local_function.entry_block()),
+        &mut fn_instr_seq,
+        &mut HashMap::new(),
+    );
+    let fn_copy_id = fn_builder.finish(fn_local_function.args.clone(), &mut module.funcs);
+
+    // number of instructions in original/wrapper and copied function should be the same
+    assert_eq!(
+        module.funcs.get(fn_id).kind.unwrap_local().size(),
+        module.funcs.get(fn_copy_id).kind.unwrap_local().size()
+    );
+    fn_copy_id
+}
+
 fn clone_rec(
     fn_loc: &LocalFunction,
     instrs: &ir::InstrSeq,
@@ -149,7 +163,6 @@ fn clone_rec(
         ir::Instr::BrIf(br_if) => {
             instrs_clone.br_if(jmp_ids[&br_if.block]);
         }
-        // TODO: check BrTable
         _ => {
             instrs_clone.instr(i.clone());
         }
