@@ -6,6 +6,12 @@ use walrus::*;
 /// FIXME: enable this patch only with runtime flag
 pub fn patch(module: &mut Module) -> Result<()> {
     add_profiler_to(module, "malloc")?;
+    // rusts global allocator __rust_alloc sometimes will
+    // execute aligned_alloc instead of malloc
+    match add_profiler_to(module, "aligned_alloc") {
+        Err(e) => debug!("{}", e),
+        _ => (),
+    }
     add_profiler_to(module, "calloc")?;
     add_profiler_to(module, "realloc")?;
     add_profiler_to(module, "free")?;
@@ -91,6 +97,7 @@ fn add_profiler_to(module: &mut Module, name: &str) -> Result<()> {
     Ok(())
 }
 
+// TODO: move to normalisation/utils.rs ?
 fn clone_function(module: &mut Module, fn_id: FunctionId, name: Option<String>) -> FunctionId {
     let types = module.types.params_results(module.funcs.get(fn_id).ty());
     let (params, results) = (types.0.to_vec(), types.1.to_vec());
@@ -111,7 +118,7 @@ fn clone_function(module: &mut Module, fn_id: FunctionId, name: Option<String>) 
     );
     let fn_copy_id = fn_builder.finish(fn_local_function.args.clone(), &mut module.funcs);
 
-    // number of instructions in original/wrapper and copied function should be the same
+    // number of instructions in original and cloned function should match
     assert_eq!(
         module.funcs.get(fn_id).kind.unwrap_local().size(),
         module.funcs.get(fn_copy_id).kind.unwrap_local().size()

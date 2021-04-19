@@ -64,6 +64,10 @@ impl HeapProfilerState {
 
 #[host_functions(namespace = "heap_profiler")]
 impl HeapProfilerState {
+    fn aligned_alloc_profiler(&mut self, _self: u32, size: Size, ptr: Ptr) {
+        self.malloc_profiler(size, ptr);
+    }
+
     fn malloc_profiler(&mut self, size: Size, ptr: Ptr) {
         debug!("heap_profiler: malloc({}) -> {}", size, ptr);
         self.memory.insert(ptr, size);
@@ -103,6 +107,8 @@ impl HeapProfilerState {
                     self.live_heap_size -= size as u64;
                     self.history_push();
                 }
+                // NOTE: this code path should not be triggered
+                // TODO: should we trap here?
                 None => error!("heap_profiler: can't free, pointer {} doesn't exist", ptr),
             };
         }
