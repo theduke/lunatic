@@ -27,15 +27,34 @@ impl StateMarker for HeapProfilerState {}
 
 impl HeapProfilerState {
     pub fn new() -> Self {
-        let mut history = VecDeque::with_capacity(HISTORY_CAPACITY);
-        history.push_back((0, Duration::new(0, 0)));
         Self {
             memory: HashMap::new(),
             live_heap_size: 0,
             total_allocated: 0,
             started: SystemTime::now(),
-            heap_history: history,
+            heap_history: VecDeque::with_capacity(HISTORY_CAPACITY),
         }
+    }
+
+    pub fn merge(&mut self, profiler: HeapProfilerState) {
+        profiler.memory.iter().for_each(|(k, v)| {
+            let val = *v;
+            match self.memory.insert(*k, val) {
+                None => self.live_heap_size += val as u64,
+                Some(old_val) => self.live_heap_size += (val - old_val) as u64,
+            }
+        });
+        self.total_allocated += profiler.total_allocated;
+        self.started = std::cmp::min(self.started, profiler.started);
+        profiler.heap_history.iter().for_each(|(heap, duration)| {
+            // TODO: trap if elapsed failed
+            if self.heap_history.len() == HISTORY_CAPACITY {
+                // if HISTRY_CAPACITY > 0 this should be safe
+                self.heap_history.pop_front().unwrap();
+            }
+            self.heap_history.push_back((*heap, *duration));
+        });
+        self.heap_history.make_contiguous().sort();
     }
 
     pub fn write_dat(&self, fd: &mut File) -> std::io::Result<()> {

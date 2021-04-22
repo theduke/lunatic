@@ -1,3 +1,4 @@
+use crate::api::process::api::ProcessState;
 use std::{cell::RefCell, rc::Rc};
 use uptown_funk::{Executor, HostFunctions};
 
@@ -30,14 +31,13 @@ impl HostFunctions for DefaultApi {
         let channel_state = channel::api::ChannelState::new(self.context_receiver);
         let process_state = process::api::ProcessState::new(self.module, channel_state.clone());
         let networking_state = networking::TcpState::new(channel_state.clone());
-        let profiler_state = HeapProfilerState::new();
         let wasi_state = wasi::api::WasiState::new();
 
         channel_state.add_to_linker(executor.clone(), linker);
-        process_state.add_to_linker(executor.clone(), linker);
         networking_state.add_to_linker(executor.clone(), linker);
         wasi_state.add_to_linker(executor.clone(), linker);
-        profiler_state.add_to_linker(executor, linker)
+        profiler_state.add_to_linker(executor.clone(), linker);
+        fmap_profiler(process_state.add_to_linker(executor, linker))
     }
 
     #[cfg(feature = "vm-wasmer")]
@@ -53,13 +53,18 @@ impl HostFunctions for DefaultApi {
         let channel_state = channel::api::ChannelState::new(self.context_receiver);
         let process_state = process::api::ProcessState::new(self.module, channel_state.clone());
         let networking_state = networking::TcpState::new(channel_state.clone());
-        let profiler_state = HeapProfilerState::new();
         let wasi_state = wasi::api::WasiState::new();
 
         channel_state.add_to_wasmer_linker(executor.clone(), linker, store);
-        process_state.add_to_wasmer_linker(executor.clone(), linker, store);
         networking_state.add_to_wasmer_linker(executor.clone(), linker, store);
         wasi_state.add_to_wasmer_linker(executor.clone(), linker, store);
-        profiler_state.add_to_wasmer_linker(executor, linker, store)
+        fmap_profiler(process_state.add_to_wasmer_linker(executor, linker, store))
+    }
+}
+
+fn fmap_profiler(process_state: Rc<RefCell<ProcessState>>) -> Rc<RefCell<HeapProfilerState>> {
+    match Rc::try_unwrap(process_state) {
+        Ok(p) => Rc::new(RefCell::new(p.into_inner().profiler)),
+        Err(_) => panic!("ProcessState referenced multiple times"),
     }
 }

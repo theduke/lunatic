@@ -44,7 +44,7 @@ pub fn run() -> Result<()> {
     let cpus = thread::available_concurrency().unwrap();
     let (signal, shutdown) = smol::channel::unbounded::<()>();
 
-    Parallel::new()
+    let profile = Parallel::new()
         .each(0..cpus.into(), |_| {
             // Extend the signal stack on all execution threads
             #[cfg(target_family = "unix")]
@@ -67,6 +67,10 @@ pub fn run() -> Result<()> {
         })
         .1
         .map_err(|e| e.error)?;
+    if is_profile {
+        let mut profile_out = std::fs::File::create("heap.dat")?;
+        profile.write_dat(&mut profile_out)?;
+    }
 
     Ok(())
 }

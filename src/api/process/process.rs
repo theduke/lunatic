@@ -9,8 +9,9 @@ use std::rc::Rc;
 use uptown_funk::{memory::Memory, Executor, FromWasm, HostFunctions, ToWasm};
 
 use crate::module::LunaticModule;
-use crate::{api::channel::ChannelReceiver, linker::LunaticLinker};
-
+use crate::{
+    api::channel::ChannelReceiver, api::heap_profiler::HeapProfilerState, linker::LunaticLinker,
+};
 use log::info;
 use std::mem::ManuallyDrop;
 use std::{future::Future, marker::PhantomData};
@@ -128,11 +129,11 @@ impl<T, E: Into<anyhow::Error>> From<E> for Error<T> {
 
 /// A lunatic process represents an actor.
 pub struct Process {
-    task: Task<Result<(), Error<()>>>,
+    task: Task<Result<HeapProfilerState, Error<()>>>,
 }
 
 impl Process {
-    pub fn task(self) -> Task<Result<(), Error<()>>> {
+    pub fn task(self) -> Task<Result<HeapProfilerState, Error<()>>> {
         self.task
     }
 
@@ -213,7 +214,7 @@ impl Process {
         function: FunctionLookup,
         memory: MemoryChoice,
         is_profile: bool,
-    ) -> Result<(), Error<()>> {
+    ) -> Result<HeapProfilerState, Error<()>> {
         let api = DefaultApi::new(context_receiver, module.clone());
         let ret = Process::create_with_api(module, function, memory, api).await;
         let ret = match ret {
@@ -226,25 +227,19 @@ impl Process {
                 }
             },
         };
-        if is_profile {
-            let mut profile_out = std::fs::File::create("heap.dat")?;
-            let profile = Rc::try_unwrap(ret)
-                .map_err(|_| {
-                    anyhow::Error::msg(
-                        "api_process_create: Heap profiler referenced multiple times",
-                    )
-                })?
-                .into_inner();
-            profile.write_dat(&mut profile_out)?;
-        }
+        let profile = Rc::try_unwrap(ret)
+            .map_err(|_| {
+                anyhow::Error::msg("api_process_create: Heap profiler referenced multiple times")
+            })?
+            .into_inner();
 
-        Ok(())
+        Ok(profile)
     }
 
     /// Spawns a new process on the `EXECUTOR`
     pub fn spawn<Fut>(future: Fut) -> Self
     where
-        Fut: Future<Output = Result<(), Error<()>>> + Send + 'static,
+        Fut: Future<Output = Result<HeapProfilerState, Error<()>>> + Send + 'static,
     {
         let task = EXECUTOR.spawn(future);
         Self { task }

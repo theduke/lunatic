@@ -1,5 +1,6 @@
 use crate::{
     api::channel::{api::ChannelState, ChannelReceiver, Message},
+    api::heap_profiler::HeapProfilerState,
     module::LunaticModule,
 };
 
@@ -18,6 +19,7 @@ pub struct ProcessState {
     module: LunaticModule,
     channel_state: ChannelState,
     pub processes: HashMapStore<Process>,
+    pub profiler: HeapProfilerState,
 }
 
 impl StateMarker for ProcessState {}
@@ -28,6 +30,7 @@ impl ProcessState {
             module,
             channel_state,
             processes: HashMapStore::new(),
+            profiler: HeapProfilerState::new(),
         }
     }
 }
@@ -73,9 +76,12 @@ impl ProcessState {
 
     // Wait on child process to finish.
     // Returns 0 if process didn't trap, otherwise 1
-    async fn join(&self, process: Process) -> u32 {
+    async fn join(&mut self, process: Process) -> u32 {
         match process.task().await {
-            Ok(_) => 0,
+            Ok(profiler) => {
+                self.profiler.merge(profiler);
+                0
+            }
             Err(_) => 1,
         }
     }
