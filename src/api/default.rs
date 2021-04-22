@@ -21,7 +21,7 @@ impl DefaultApi {
 }
 
 impl HostFunctions for DefaultApi {
-    type Return = Rc<RefCell<HeapProfilerState>>;
+    type Return = (Rc<RefCell<HeapProfilerState>>, Rc<RefCell<ProcessState>>);
 
     #[cfg(feature = "vm-wasmtime")]
     fn add_to_linker<E>(self, executor: E, linker: &mut wasmtime::Linker) -> Self::Return
@@ -29,6 +29,7 @@ impl HostFunctions for DefaultApi {
         E: Executor + Clone + 'static,
     {
         let channel_state = channel::api::ChannelState::new(self.context_receiver);
+        let profiler = HeapProfilerState::new();
         let process_state = process::api::ProcessState::new(self.module, channel_state.clone());
         let networking_state = networking::TcpState::new(channel_state.clone());
         let wasi_state = wasi::api::WasiState::new();
@@ -37,7 +38,9 @@ impl HostFunctions for DefaultApi {
         networking_state.add_to_linker(executor.clone(), linker);
         wasi_state.add_to_linker(executor.clone(), linker);
         profiler_state.add_to_linker(executor.clone(), linker);
-        fmap_profiler(process_state.add_to_linker(executor, linker))
+        let rc_process_state = process_state.add_to_linker(executor.clone(), linker);
+        let rc_profiler = profiler.add_to_linker(executor.clone(), linker);
+        (rc_profiler, rc_process_state)
     }
 
     #[cfg(feature = "vm-wasmer")]
@@ -51,6 +54,7 @@ impl HostFunctions for DefaultApi {
         E: Executor + Clone + 'static,
     {
         let channel_state = channel::api::ChannelState::new(self.context_receiver);
+        let profiler = HeapProfilerState::new();
         let process_state = process::api::ProcessState::new(self.module, channel_state.clone());
         let networking_state = networking::TcpState::new(channel_state.clone());
         let wasi_state = wasi::api::WasiState::new();
@@ -58,13 +62,8 @@ impl HostFunctions for DefaultApi {
         channel_state.add_to_wasmer_linker(executor.clone(), linker, store);
         networking_state.add_to_wasmer_linker(executor.clone(), linker, store);
         wasi_state.add_to_wasmer_linker(executor.clone(), linker, store);
-        fmap_profiler(process_state.add_to_wasmer_linker(executor, linker, store))
-    }
-}
-
-fn fmap_profiler(process_state: Rc<RefCell<ProcessState>>) -> Rc<RefCell<HeapProfilerState>> {
-    match Rc::try_unwrap(process_state) {
-        Ok(p) => Rc::new(RefCell::new(p.into_inner().profiler)),
-        Err(_) => panic!("ProcessState referenced multiple times"),
+        let rc_process_state = process_state.add_to_wasmer_linker(executor.clone(), linker, store);
+        let rc_profiler = profiler.add_to_wasmer_linker(executor.clone(), linker, store);
+        (rc_profiler, rc_process_state)
     }
 }

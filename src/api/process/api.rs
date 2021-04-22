@@ -3,6 +3,7 @@ use crate::{
     api::heap_profiler::HeapProfilerState,
     module::LunaticModule,
 };
+use std::{cell::RefCell, rc::Rc};
 
 use super::{FunctionLookup, MemoryChoice, Process};
 
@@ -19,7 +20,7 @@ pub struct ProcessState {
     module: LunaticModule,
     channel_state: ChannelState,
     pub processes: HashMapStore<Process>,
-    pub profiler: HeapProfilerState,
+    pub profiler: Vec<HeapProfilerState>,
 }
 
 impl StateMarker for ProcessState {}
@@ -30,7 +31,7 @@ impl ProcessState {
             module,
             channel_state,
             processes: HashMapStore::new(),
-            profiler: HeapProfilerState::new(),
+            profiler: vec![],
         }
     }
 }
@@ -79,7 +80,10 @@ impl ProcessState {
     async fn join(&mut self, process: Process) -> u32 {
         match process.task().await {
             Ok(profiler) => {
-                self.profiler.merge(profiler);
+                self.profiler.push(profiler);
+                //    let k = Rc::try_unwrap(self.profiler);
+                //    .unwrap()
+                //    .merge(profiler);
                 0
             }
             Err(_) => 1,

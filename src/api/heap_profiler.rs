@@ -36,7 +36,7 @@ impl HeapProfilerState {
         }
     }
 
-    pub fn merge(&mut self, profiler: HeapProfilerState) {
+    pub fn merge(&mut self, profiler: &HeapProfilerState) {
         profiler.memory.iter().for_each(|(k, v)| {
             let val = *v;
             match self.memory.insert(*k, val) {

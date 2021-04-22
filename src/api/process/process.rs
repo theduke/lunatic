@@ -217,7 +217,7 @@ impl Process {
     ) -> Result<HeapProfilerState, Error<()>> {
         let api = DefaultApi::new(context_receiver, module.clone());
         let ret = Process::create_with_api(module, function, memory, api).await;
-        let ret = match ret {
+        let (rc_profile, rc_process_state) = match ret {
             Ok(r) => r,
             Err(Error { error, value }) => match value {
                 Some(r) => r,
@@ -227,11 +227,22 @@ impl Process {
                 }
             },
         };
-        let profile = Rc::try_unwrap(ret)
+        let mut profile = Rc::try_unwrap(rc_profile)
             .map_err(|_| {
-                anyhow::Error::msg("api_process_create: Heap profiler referenced multiple times")
+                anyhow::Error::msg(
+                    "api_process_create: HeapProfilerState referenced multiple times",
+                )
             })?
             .into_inner();
+        let child_profiles = Rc::try_unwrap(rc_process_state)
+            .map_err(|_| {
+                anyhow::Error::msg("api_process_create: ProcessState referenced multiple times")
+            })?
+            .into_inner()
+            .profiler;
+        child_profiles.iter().for_each(|p| {
+            profile.merge(&p);
+        });
 
         Ok(profile)
     }
